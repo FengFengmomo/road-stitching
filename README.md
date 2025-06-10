@@ -1,28 +1,20 @@
 # stitching
 
-A Python package for fast and robust Image Stitching.
+A Python package for road Image Stitching.
 
-Based on opencv's [stitching
-module](https://github.com/opencv/opencv/tree/4.x/modules/stitching)
+Based on repo [stitching
+module](https://github.com/OpenStitching/stitching)
 and inspired by the
 [stitching_detailed.py](https://github.com/opencv/opencv/blob/4.x/samples/python/stitching_detailed.py)
 python command line tool.
 
-![inputs](https://github.com/lukasalexanderweber/stitching_tutorial/blob/master/docs/static_files/inputs.png?raw=true)
+![inputs](https://github.com/FengFengmomo/road-stitching/blob/master/assets/img_3.png?raw=true)
 
-![result](https://github.com/lukasalexanderweber/stitching_tutorial/blob/master/docs/static_files/panorama.png?raw=true)
+![result](https://github.com/FengFengmomo/road-stitching/blob/master/assets/img_4.png?raw=true)
 
-## Installation
 
-use the [docker image](#docker-cli)
 
-or `pip` to install `stitching` from
-[PyPI](https://pypi.org/project/stitching/).
-
-```bash
-pip install stitching
-```
-
+ 
 ## Usage
 
 ### Python CLI
@@ -114,37 +106,7 @@ The equivalent of the `-v`/`--verbose` cli parameter within the script is
 panorama = stitcher.stitch_verbose(...)
 ```
 
-## Questions
 
-For questions please use our [discussions](https://github.com/OpenStitching/stitching/discussions).
-Please do not use our issue section for questions.
-
-## Contribute
-
-Read through [how to contribute](CONTRIBUTING.md) for information on topics
-like finding and fixing bugs and improving / maintaining this package.
-
-## Tutorial
-
-This package provides utility functions to deeply analyse what's
-happening behind the stitching. A tutorial was created as [Jupyter
-Notebook](https://github.com/lukasalexanderweber/stitching_tutorial). The
-preview is
-[here](https://github.com/lukasalexanderweber/stitching_tutorial/blob/master/docs/Stitching%20Tutorial.md).
-
-You can e.g. visualize the RANSAC matches between the images or the
-seam lines where the images are blended:
-
-![matches1](https://github.com/lukasalexanderweber/stitching_tutorial/blob/master/docs/static_files/matches1.png?raw=true)
-![matches2](https://github.com/lukasalexanderweber/stitching_tutorial/blob/master/docs/static_files/matches2.png?raw=true)
-![seams1](https://github.com/lukasalexanderweber/stitching_tutorial/blob/master/docs/static_files/seams1.png?raw=true)
-![seams2](https://github.com/lukasalexanderweber/stitching_tutorial/blob/master/docs/static_files/seams2.png?raw=true)
-
-## Literature
-
-This package was developed and used for our paper [Automatic stitching
-of fragmented construction plans of hydraulic
-structures](https://hdl.handle.net/20.500.11970/112696)
 
 ## License
 
