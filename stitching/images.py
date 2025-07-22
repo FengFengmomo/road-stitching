@@ -126,7 +126,7 @@ class Images(ABC):
     @staticmethod
     def resize_img_by_scaler(scaler, size, img):
         desired_size = scaler.get_scaled_img_size(size)
-        return cv.resize(img, desired_size, interpolation=cv.INTER_LINEAR_EXACT)
+        return cv.resize(img, desired_size, interpolation=cv.INTER_AREA)
 
     @staticmethod
     def check_resolution(resolution):

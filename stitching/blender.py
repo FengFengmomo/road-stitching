@@ -34,7 +34,6 @@ class Blender:
         elif self.blender_type == "feather":
             self.blender = cv.detail_FeatherBlender()
             self.blender.setSharpness(1.0 / blend_width)
-
         self.blender.prepare(dst_sz)
 
     def feed(self, img, mask, corner):

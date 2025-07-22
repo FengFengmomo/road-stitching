@@ -16,12 +16,14 @@ class BestOf2NearestMatcher:
         concurrent.futures.wait(futures) # 等待所有任务完成
 
         对输入的特征进行匹配
+
+        # 只要good——matches数据量够少，那么计算refine——camera时就会更快
         :param features: 包含图像特征的列表，每个元素是 cv2.detail.ImageFeatures 对象
         :return: 匹配结果列表，每个元素是 MatchesInfo 对象
         """
         pairwise_matches = []
         matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_FLANNBASED)
-
+        wdith, height = features[0].img_size
         # 遍历所有图像对
         for i in range(len(features)):
             for j in range(len(features)):
@@ -60,6 +62,36 @@ class BestOf2NearestMatcher:
                 for m, n in knn_matches:
                     if m.distance < self.ratio_thresh * n.distance:
                         good_matches.append(m)
+
+                #把goodmatches里面超过高度 60%的剔除掉，距离差
+                # threshold = height * 0.4
+                newgoodmatches = []
+                kps1 = features[i].keypoints
+                kps2 = features[j].keypoints
+
+                distance = 0
+                for m in good_matches:
+                    original = kps1[m.queryIdx]
+                    transform = kps2[m.trainIdx]
+                    pt1 = original.pt  # x,y
+                    pt2 = transform.pt
+                    distance += abs(pt1[1] - pt2[1])
+                    # distance += abs((pt1[1] - pt2[1])/(pt1[0]-pt2[0]))
+                distance_everage = distance / len(good_matches)
+                threshold = distance_everage * 0.1
+                for m in good_matches:
+                    original = kps1[m.queryIdx]
+                    transform = kps2[m.trainIdx]
+                    pt1 = original.pt  # x,y
+                    pt2 = transform.pt
+
+                    if abs(abs(pt1[1]-pt2[1]) -distance_everage) < threshold and abs(pt1[0] - pt2[0]) < 100:
+                    # if abs((pt1[1]-pt2[1])/(pt1[0]-pt2[0]) -distance_everage) < threshold and abs(pt1[0] - pt2[0]) < 100:
+                        newgoodmatches.append(m)
+                good_matches = newgoodmatches
+
+                # 后续再找到对应的features里面匹配的点，只留下good_matches匹配点， 然后对于更新每个matches_info里面的matches向量
+
 
                 # 几何验证（使用 RANSAC 计算单应性矩阵）
                 H = None

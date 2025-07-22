@@ -7,7 +7,7 @@ class WarperAdjuster:
         pass
 
 
-    def adjust(self, imgs, corners, road_masks_imgs, masks):
+    def adjust(self, imgs, corners, road_masks_imgs, masks, points = []):
         '''
         这里的mask是公路白线掩码， 和images一样都是warp以后的
         '''
@@ -21,22 +21,7 @@ class WarperAdjuster:
             mask_roi1, mask_roi2 = self.get_overlap_regions_pixels(masks[i], corners[i], masks[i + 1], corners[i + 1], overlap)
             # index1, index2 = self.get_mask_intersect_min_index(road_mask_roi1, mask_roi1, True), self.get_mask_intersect_min_index(road_mask_roi2, mask_roi2, False)
             index1, index2 = self.get_mask_intersect_min_index(road_mask_roi1, mask_roi1, road_mask_roi2, mask_roi2)
-            # index1 = self.get_mask_index(road_mask_roi1)
-            # index2 = self.get_mask_index(road_mask_roi2)
-            # # margin = index2[2] - index1[2] + index2[0] - index1[0] + index2[1] - index1[1]
-            # margin = index2[1] - index1[1]
-            # margin = int(margin/2) # 两个掩码的索引差值
-            # margin = int(index2[1] - index1[1]) # 两个掩码的索引差值
-            # point1 = overlap[0] - corners[i][0] + index1[0], overlap[1] + corners[i][1]+index1[1]
-            # point2 = overlap[0] - corners[i+1][0] + index2[0], overlap[1] + corners[i+1][1]+index2[1]
-            # cv2.circle(imgs[i], point1, 30, (255, 0, 0), -1)
-            # cv2.circle(imgs[i+1], point2, 30, (0, 0, 255), -1)
             margin = index2 - index1
-
-            # if i+1 == 8:
-            #     margin+=12
-            # if i+1 == 9:
-            #     margin -=5
             print("index1:", index1, " index2:", index2, f' {i+1} 相对{i} 偏移了 {-margin}')
             if margin == 0:
                 continue
@@ -44,6 +29,9 @@ class WarperAdjuster:
             # margin大于零说明下一张图片偏右了， 否则就是偏左了
             for j in range(i+1,len(imgs)):
                 corners[j][0] -= margin
+            if len(points) > 0:
+                for j in range(i+1,len(points)):
+                    points[j][0] -= margin
 
         corners = [tuple(ele) for ele in corners]
 
@@ -162,36 +150,27 @@ class WarperAdjuster:
 
         return img1_roi, img2_roi
 
-    def get_mask_index(self, mask, padding = 30):
-        width, height = mask.shape[1], mask.shape[0]
-        mid = int(height / 2)
-        index_0 = np.min(np.where(mask[mid+50] >50))
-        index_h = np.min(np.where(mask[mid - 50] >50))
-        index_mid = np.where(mask[mid] >50)
-        index_low = np.where(mask[mid - padding] >50)
-        index_high = np.where(mask[mid + padding] > 50)
-        index_low_min = np.min(index_low)
-        index_high_min = np.min(index_high)
-        index_mid_min = np.min(index_mid)
-        # 求三个数得平均
-        return [index_low_min, index_mid_min, index_high_min, index_0, index_h]
+    # def get_mask_index(self, mask, padding = 30):
+    #     width, height = mask.shape[1], mask.shape[0]
+    #     mid = int(height / 2)
+    #     index_0 = np.min(np.where(mask[mid+50] >50))
+    #     index_h = np.min(np.where(mask[mid - 50] >50))
+    #     index_mid = np.where(mask[mid] >50)
+    #     index_low = np.where(mask[mid - padding] >50)
+    #     index_high = np.where(mask[mid + padding] > 50)
+    #     index_low_min = np.min(index_low)
+    #     index_high_min = np.min(index_high)
+    #     index_mid_min = np.min(index_mid)
+    #     # 求三个数得平均
+    #     return [index_low_min, index_mid_min, index_high_min, index_0, index_h]
 
     def get_mask_intersect_min_index(self, road_mask1, seam_mask1, road_mask2, seam_mask2):
-        # 找到拼接缝和白线掩码相交的最左上角
-
-        # seam_mask1[seam_mask1!=0] = 255
-        # kernel = np.ones((3, 3), np.uint8)  # 定义膨胀核（调整核大小可控制边缘宽度）
-        # dilated = cv2.dilate(seam_mask1, kernel, iterations=1)  # 膨胀
-        # seam_mask1 = dilated - seam_mask1  # 获得边缘
+        # # 找到两个相邻图像相交的部分
 
         road_mask1[road_mask1 != 0] = 1
         seam_mask1[seam_mask1 != 0] = 1
         mask1 = road_mask1 * seam_mask1
 
-        # seam_mask2[seam_mask2 != 0] = 255
-        # kernel = np.ones((3, 3), np.uint8)  # 定义膨胀核（调整核大小可控制边缘宽度）
-        # dilated = cv2.dilate(seam_mask2, kernel, iterations=1)  # 膨胀
-        # seam_mask2 = dilated - seam_mask2  # 获得边缘
         road_mask2[road_mask2 != 0] = 2
         seam_mask2[seam_mask2 != 0] = 2
         mask2 = road_mask2 * seam_mask2
@@ -208,12 +187,9 @@ class WarperAdjuster:
         # 计算行和列的边界
         r_min, r_max = rows.min(), rows.max()
         # c_min, c_max = cols.min(), cols.max()
-
+        print(r_min, r_max)
         # 从两个区域计算两个区域的中间部分，核心位置，然后计算两个的偏移
         # 两个掩码，只取最小行和最大行之间的部分， 取全部列
-        mask1_area = mask1[r_min: r_max + 1, :]
-        mask2_area = mask2[r_min: r_max + 1, :]
-        padding = int((r_max-r_min)/2)
 
         eves1 = []
         # 计算掩码非零部分的最大列索引和最小列索引
@@ -231,6 +207,68 @@ class WarperAdjuster:
         eves2 = []
         # 计算掩码非零部分的最大列索引和最小列索引
         for i in range(r_min, r_max):
+            notzero = np.where(road_mask2[i] != 0)
+            if len(notzero[0]) == 0:
+                continue
+            min_col = np.min(notzero)
+            max_col = np.max(notzero)
+            everage = (min_col + max_col)/2
+            eves2.append(everage)
+        eve2 = np.mean(np.array(eves2))
+        eve2 = int(eve2)
+        return eve1, eve2
+
+
+    def get_mask_intersect_min_index2(self, road_mask1, seam_mask1, road_mask2, seam_mask2):
+        # 找到两个相邻图像相交的部分
+
+        road_mask1[road_mask1 != 0] = 1
+        seam_mask1[seam_mask1 != 0] = 1
+        mask1 = road_mask1 + seam_mask1
+        mask1[mask1!=2] =0
+
+        road_mask2[road_mask2 != 0] = 1
+        seam_mask2[seam_mask2 != 0] = 1
+        mask2 = road_mask2 + seam_mask2
+        mask2[mask2!=2] =0
+
+
+        rows1, cols1 = np.nonzero(mask1)
+
+        if rows1.size == 0:
+            # 未检测到非零值，不进行偏移矫正
+            return 0, 0
+        # 计算行和列的边界
+        r_min1, r_max1 = rows1.min(), rows1.max()
+
+        rows2, cols2 = np.nonzero(mask2)
+        if rows2.size == 0:
+            # 未检测到非零值，不进行偏移矫正
+            return 0, 0
+        # 计算行和列的边界
+        r_min2, r_max2 = rows2.min(), rows2.max()
+        padding = 0
+        print(r_min1, r_max1, r_min2, r_max2)
+        # padding = 0
+        # print(padding)
+        if r_min1 > r_max2:
+            r_min1, r_max2 = r_max2, r_min1
+        eves1 = []
+        # 计算掩码非零部分的最大列索引和最小列索引
+        for i in range(r_min1+padding, r_max2-padding):
+            notzero = np.where(road_mask1[i] != 0)
+            if len(notzero[0]) == 0:
+                continue
+            min_col = np.min(notzero)
+            max_col = np.max(notzero)
+            everage = (min_col + max_col)/2
+            eves1.append(everage)
+        eve1 = np.mean(np.array(eves1))
+        eve1 = int(eve1)
+
+        eves2 = []
+        # 计算掩码非零部分的最大列索引和最小列索引
+        for i in range(r_min1+padding, r_max2-padding):
             notzero = np.where(road_mask2[i] != 0)
             if len(notzero[0]) == 0:
                 continue

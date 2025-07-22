@@ -81,6 +81,23 @@ class Warper:
         K = Warper.get_K(camera, aspect)
         return warper.warpRoi(size, K, camera.R)
 
+    def warp_points(self, points, cameras, aspect=1):
+        # 创建一个旋转扭曲器
+        warper = cv.PyRotationWarper(self.warper_type, self.scale * aspect)
+        # 创建一个空列表，用于存储扭曲后的点
+        prej_points = []
+        # 遍历输入的点和平面
+        for point,camera in zip(points, cameras):
+            # 获取相机的内参矩阵
+            K = Warper.get_K(camera, aspect)
+            # 扭曲点
+            prej_point = warper.warpPoint(point, K, camera.R)
+            # 将扭曲后的点添加到列表中
+            prej_points.append(prej_point)
+        # 返回扭曲后的点列表
+        prej_points = [[round(point[0]), round(point[1])] for point in prej_points]
+        return prej_points
+
     @staticmethod
     def get_K(camera, aspect=1):
         K = camera.K().astype(np.float32)

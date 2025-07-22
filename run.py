@@ -26,6 +26,8 @@ original_settings = {
 }
 sift_settings = {
     "final_megapix": -1,
+    "medium_megapix": 1.0,
+    # "low_megapix":0.1,
     "detector": "sift", # orb sift brisk akaze
     # "matcher_type": "affine",
     "matcher_type": "knnmatch",
@@ -52,6 +54,7 @@ start = time.time()
 
 
 base_dir  = path.abspath('./wandao')
+# base_dir  = path.abspath('E:\\test_wandao11')
 
 files = os.listdir(base_dir)
 images = []
@@ -64,36 +67,42 @@ for file in files:
         break
 
 dir = path.join(base_dir, 'masks')
-files = os.listdir(dir)
+
 masks = []
-number = 0
-for file in files:
-    if file.endswith(".JPG"):
-        masks.append(path.join(dir, file))
-        number+=1
-    if test and number>=test_number:
-        break
+if os.path.exists(dir):
+    files = os.listdir(dir)
+    number = 0
+    for file in files:
+        if file.endswith(".JPG") or file.endswith(".png"):
+            masks.append(path.join(dir, file))
+            number+=1
+        if test and number>=test_number:
+            break
 
 dir = path.join(base_dir, 'cracks')
-files = os.listdir(dir)
 cracks = []
-number = 0
-for file in files:
-    if file.endswith(".png"):
-        cracks.append(path.join(dir, file))
-        number+=1
-    if test and number>=test_number:
-        break
+if os.path.exists(dir):
+    files = os.listdir(dir)
+    number = 0
+    for file in files:
+        if file.endswith(".png"):
+            cracks.append(path.join(dir, file))
+            number+=1
+        if test and number>=test_number:
+            break
 
 
 # panorama, panorama_with_seam_lines, with_seam_polygons = stitcher.stitch(images, road_masks_img=masks)
 # 如果有cameras.json数据就可以不执行下面这句了，只执行下下句代码
-stitcher.produce_stitch_cameras_data(images, road_masks_img=masks, crack_imgs = cracks)
-panorama, panorama_with_seam_lines, with_seam_polygons = stitcher.stitch_with_camera_data()
+# stitcher.produce_stitch_cameras_data(images, road_masks_img=masks, crack_imgs = cracks)
+panorama, panorama_with_seam_lines = stitcher.stitch_with_camera_data(useCorrect=True)
 cv2.imwrite("stitch10.jpg", panorama)
 cv2.imwrite("stitch10_with_seam_lines.jpg", panorama_with_seam_lines)
-cv2.imwrite("stitch10_with_seam_polygons.jpg", with_seam_polygons)
-
+# cv2.imwrite("wd11_error.jpg", panorama)
+# cv2.imwrite("wd11_error_lines.jpg", panorama_with_seam_lines)
+# panorama, panorama_with_seam_lines = stitcher.stitch_with_camera_data(useCorrect=True)
+# cv2.imwrite("wd11_perfect.jpg", panorama)
+# cv2.imwrite("wd11_perfect_lines.jpg", panorama_with_seam_lines)
 # stitcher.stitch_verbose(images, verbose_dir="verbose")
 end = time.time()
 print("程序运行时间：", end - start)

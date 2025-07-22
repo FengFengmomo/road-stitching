@@ -12,7 +12,8 @@ import os
 lower = [0, 0, 0]
 height = [180, 50, 40]
 white = [[0, 0, 170], [180, 30, 255], "masks", 5000]
-yellow = [[0, 70, 170], [60, 255, 255],"masks",5000]
+yellow = [[0, 70, 170], [60, 255, 255],"masks",5000*3]
+# yellow = [[0, 30, 120], [60, 255, 255],"masks",5000] # 228 yellow
 black = [[0, 0, 40], [200, 30, 120], "masks",500000]
 def process(road, lower, height, threshold = 5000):
     # road = '../wandao/DJI_20240511161259_0060.JPG'
@@ -61,6 +62,9 @@ def process(road, lower, height, threshold = 5000):
             # x, y, w, h = cv2.boundingRect(cnt)
             # aspect_ratio = w / h if h != 0 else 0
             # if aspect_ratio > 5 or aspect_ratio < 0.2:
+            # 曲线拟合（减少锯齿）
+            # epsilon = 0.005 * cv2.arcLength(cnt, True)
+            # approx = cv2.approxPolyDP(cnt, epsilon, True)
             cv2.drawContours(filtered_mask, [cnt], -1, 255, -1)
 
     img = filtered_mask
@@ -71,12 +75,16 @@ def process(road, lower, height, threshold = 5000):
     # 执行闭合操作（先膨胀后腐蚀）
     img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel)
     img = cv2.dilate(img, kernel, iterations=2)  # iterations控制膨胀次数
+
+    # img = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel, iterations=3)
+
+
     return img
     cv2.namedWindow('road', cv2.WINDOW_NORMAL)
     cv2.imshow('road', img)
     cv2.waitKey(0)
 
-dir  = path.abspath('../101')
+dir  = path.abspath('E:\\test_wandao2\\')
 file_ext = '.JPG'
 
 files = os.listdir(dir)

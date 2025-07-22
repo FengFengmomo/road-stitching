@@ -18,6 +18,9 @@ class MegapixScaler:
         if self.megapix > 0:
             return np.sqrt(self.megapix * 1e6 / resolution)
         return 1.0
+        # if self.megapix > 0:
+        #     return self.megapix
+        # return 1.0
 
     def get_scaled_img_size(self, img_size):
         width = int(round(img_size[0] * self.scale))

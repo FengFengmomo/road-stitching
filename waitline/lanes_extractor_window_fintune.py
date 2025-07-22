@@ -6,7 +6,8 @@ def nothing(x):
     pass
 
 # 将BGR图像转化为HSV图像
-road = '../s101_wandao/DJI_20240915170208_0529.JPG'
+# road = '../s101_wandao/DJI_20240915170208_0529.JPG'
+road = 'E:\\test_wandao3\\DJI_20250318191405_0849.JPG'
 win_img = "new"
 win_img_old = "old"
 pic = cv2.imread(road) # 自己想要分析的照片

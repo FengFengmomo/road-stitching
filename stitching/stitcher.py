@@ -77,7 +77,7 @@ class Stitcher:
         self.low_megapix = args.low_megapix # 低分辨率
         self.final_megapix = args.final_megapix # 最终分辨率
         if args.detector in ("orb", "sift"): # 如果检测器是orb或者sift
-            self.detector = FeatureDetector(args.detector, nfeatures=0, nOctaveLayers=10, contrastThreshold=0.04, edgeThreshold=0, sigma=1.6, enable_precise_upscale=None)
+            self.detector = FeatureDetector(args.detector, nfeatures=0, nOctaveLayers=3, contrastThreshold=0.04, edgeThreshold=10, sigma=1.6, enable_precise_upscale=None)
             # self.detector = FeatureDetector(args.detector, nfeatures=0, nOctaveLayers=3, contrastThreshold=0.04, edgeThreshold=10, sigma=1.6, enable_precise_upscale=None)
         else: # 否则使用默认的检测器
             self.detector = FeatureDetector(args.detector)
@@ -111,8 +111,45 @@ class Stitcher:
     def stitch_verbose(self, images, feature_masks=[], verbose_dir=None): # 详细拼接
         return verbose_stitching(self, images, feature_masks, verbose_dir)
 
+    def stitch_crack(self, images, feature_masks=[]):
+        self.crack = None
+        self.origin = None
+        self.images = Images.of(
+            images, self.medium_megapix, self.low_megapix, self.final_megapix
+        )
+
+        # self.crack = Images.of(cracks, self.medium_megapix, self.low_megapix, self.final_megapix)
+
+        imgs = self.resize_medium_resolution() # 中等分辨率 放缩到中等分辨率, 原来的图片还在
+        # imgs = self.resize_final_resolution() # 完全的分辨率
+        # cracks = self.crack.resize(Images.Resolution.MEDIUM)
+        features = self.find_features(imgs, feature_masks) # 计算每个图片的特征点，进行了detect和compute， 这里 features_masks是个空
+        # 这里的matches 是一个二维矩阵，记录两两对应的特征匹配情况
+        matches = self.match_features(features) # 至此
+        # 在这步就将matches恢复成二维矩阵？
+        imgs, features, matches = self.subset(imgs, features, matches) # 在这里已经得到了去除无关图片之后的缩略图片、特征、匹配特征矩阵，
+        cameras = self.estimate_camera_parameters(features, matches) # 这里是得到了每张照片全局的相机变化参数R，是基于变换矩阵H得到的
+        print("base cost time:", self.cost_time())
+        cameras = self.refine_camera_parameters(features, matches, cameras) # 这里得到的cameras是每个图片的变换参数R，T，K，这里进行了相机参数的优化
+        print("refine_camera_parameters cost time:", self.cost_time()) # 时间168.24370980262756
+        cameras = self.perform_wave_correction(cameras) # 因为不进行波纹矫正，这个可以不要
+        self.estimate_scale(cameras)
+        imgs = self.resize_low_resolution(imgs)
+        # cracks = self.resize_low_resolution(cracks)
+        imgs, masks, corners, sizes = self.warp_low_resolution(imgs, cameras) # 这里进行了图像的扭曲，得到了扭曲后的图片，以及对应的mask，corners，sizes
+        seam_masks = self.find_seam_masks(imgs, corners, masks)
+        imgs = self.resize_final_resolution()
+        imgs, masks, corners, sizes, prej_points = self.warp_final_resolution(imgs, cameras)
+        self.set_masks(masks)
+        seam_masks = self.resize_seam_masks(seam_masks)
+        self.initialize_composition(corners, sizes)
+        self.blend_images(imgs, seam_masks, corners)
+        panorama = self.create_final_panorama()
+
+        return panorama # 这里进行了图像的混合，得到了混合后的图片
+
     def stitch(self, images, feature_masks=[] , road_masks_img = []):
-        self.cracks = None
+        self.crack = None
         self.origin = None
         self.images = Images.of(
             images, self.medium_megapix, self.low_megapix, self.final_megapix
@@ -128,7 +165,7 @@ class Stitcher:
         # 这里的matches 是一个二维矩阵，记录两两对应的特征匹配情况
         matches = self.match_features(features) # 至此 特征提取，描述计算，单相应矩阵和内外点，以及优秀匹配特征点计算已完毕。
         # 在这步就将matches恢复成二维矩阵？
-        imgs, features, matches, road_masks_img = self.subset(imgs, features, matches, road_masks_img) # 在这里已经得到了去除无关图片之后的缩略图片、特征、匹配特征矩阵，
+        imgs, features, matches = self.subset(imgs, features, matches) # 在这里已经得到了去除无关图片之后的缩略图片、特征、匹配特征矩阵，
         cameras = self.estimate_camera_parameters(features, matches) # 这里是得到了每张照片全局的相机变化参数R，是基于变换矩阵H得到的
         print("base cost time:", self.cost_time())
         cameras = self.refine_camera_parameters(features, matches, cameras) # 这里得到的cameras是每个图片的变换参数R，T，K，这里进行了相机参数的优化
@@ -166,7 +203,7 @@ class Stitcher:
 
 
         imgs = self.resize_final_resolution()
-        imgs, masks, corners, sizes = self.warp_final_resolution(imgs, cameras)
+        imgs, masks, corners, sizes, prej_points = self.warp_final_resolution(imgs, cameras)
         # imgs, masks, corners, sizes = self.crop_final_resolution(
         #     imgs, masks, corners, sizes
         # )
@@ -180,7 +217,7 @@ class Stitcher:
         # 实际调整应该在这里调整corners, 在上面调整只会影响seam-cutting的查找吧！
         if self.origin:
             road_masks_img = self.origin.resize(Images.Resolution.FINAL)
-            road_masks_img, road_masks, road_corners, road_sizes = self.warp_final_resolution(road_masks_img, cameras)
+            road_masks_img, road_masks, road_corners, road_sizes, prej_points = self.warp_final_resolution(road_masks_img, cameras)
             # corners = self.warp_adjuster.adjust(imgs, corners, road_masks_img, seam_masks)
             corners = self.warp_adjuster.adjust(imgs, corners, road_masks_img, seam_masks)
         #############################################
@@ -210,11 +247,11 @@ class Stitcher:
         print("create_final_panorama cost time:", self.cost_time()) # 花费时间 80秒
         panorama_with_seam_lines = SeamFinder.draw_seam_lines(panorama, blend_seam_masks, 3)
         print("draw_seam_lines cost time:", self.cost_time()) # 花费时间
-        with_seam_polygons = SeamFinder.draw_seam_polygons(panorama, blend_seam_masks)
-        print("draw_seam_polygons cost time:", self.cost_time()) # 花费时间
-        return panorama, panorama_with_seam_lines, with_seam_polygons
+        # with_seam_polygons = SeamFinder.draw_seam_polygons(panorama, blend_seam_masks)
+        # print("draw_seam_polygons cost time:", self.cost_time()) # 花费时间
+        return panorama, panorama_with_seam_lines
 
-    def stitch_with_camera_data(self):
+    def stitch_with_camera_data(self, useCorrect = False, roadmask = False):
         '''加载cameras数据，前面没有save过滤掉数据文件，所以这里没有再特数据处理，只做实验而用'''
 
         import json
@@ -239,46 +276,48 @@ class Stitcher:
         road_masks_img, road_masks, road_corners, road_sizes = self.warp_medium_resolution(road_masks_img,cameras)  # 这里进行了图像白线黄线的扭曲
         seam_masks = self.find_seam_masks(imgs, corners, masks) # 从这里修改拼接缝 masks是白色的掩膜.如果使用原图进行接缝查找，会导致内存越界，报错结果：error: (-215:Assertion failed) u != 0 in function 'cv::UMat::create'
         imgs = self.resize_final_resolution()
-        imgs, masks, corners, sizes = self.warp_final_resolution(imgs, cameras)
+        imgs, masks, corners, sizes, prej_points = self.warp_final_resolution(imgs, cameras)
+
+
         self.set_masks(masks)
         seam_masks = self.resize_seam_masks(seam_masks)
 
         ############################################
         # 实际调整应该在这里调整corners, 在上面调整只会影响seam-cutting的查找吧！
-        road_masks_img = self.origin.resize(Images.Resolution.FINAL)
-        road_masks_img, road_masks, road_corners, road_sizes = self.warp_final_resolution(road_masks_img, cameras)
-        # corners = self.warp_adjuster.adjust(imgs, corners, road_masks_img, seam_masks)
-        corners = self.warp_adjuster.adjust(imgs, corners, road_masks_img, seam_masks)
+        if useCorrect:
+            road_masks_img = self.origin.resize(Images.Resolution.FINAL)
+            road_masks_img, road_masks, road_corners, road_sizes, prej_points = self.warp_final_resolution(road_masks_img, cameras)
+            corners = self.warp_adjuster.adjust(imgs, corners, road_masks_img, seam_masks, prej_points)
         #############################################
-
+        f = open("position.json", "w")
+        data["images"] = self.images.getImgs()
+        data["points"] = prej_points
+        data["corners"] = corners
+        data["sizes"] = sizes
+        json.dump(data, f)
+        f.close()
+        # 生成全景拼图的代码
         self.initialize_composition(corners, sizes)
         self.blend_images(imgs, seam_masks, corners)
         panorama = self.create_final_panorama()
         print("create_final_panorama cost time:", self.cost_time())
         #################################
         # 生成中央黄线的代码
-        # self.prepare_cropper(road_masks_img, road_masks, road_corners, road_sizes)  # 因为没有进行 crop 所以这里没有进行裁剪, 这部可以不执行
-        # road_masks_img, road_masks, road_corners, road_sizes = self.crop_low_resolution(  # 因为没有进行 crop 所以这里没有进行裁剪, 这部可以不执行
-        #     road_masks_img, road_masks, road_corners, road_sizes
-        # )
-        #
-        # self.estimate_exposure_errors(road_corners, road_masks_img, road_masks)
-        # road_imgs = origin.resize(Images.Resolution.FINAL)
-        road_masks_img = self.origin.resize(Images.Resolution.FINAL)
-        road_masks_img, road_masks, road_corners, road_sizes = self.warp_final_resolution(road_masks_img, cameras)
-        # road_imgs = self.compensate_exposure_errors(corners, road_imgs)
-        self.initialize_composition(corners, sizes)
-        self.blend_images(road_masks_img, seam_masks, corners)
-        road_panorama = self.create_final_panorama()
-        cv2.imwrite("./roadmask.jpg", road_panorama)
-        print("create road mask panorama cost time:", self.cost_time())  # 花费时间
+        if roadmask:
+            road_masks_img = self.origin.resize(Images.Resolution.FINAL)
+            road_masks_img, road_masks, road_corners, road_sizes, prej_points = self.warp_final_resolution(road_masks_img, cameras)
+            self.initialize_composition(corners, sizes)
+            self.blend_images(road_masks_img, seam_masks, corners)
+            road_panorama = self.create_final_panorama()
+            cv2.imwrite("./roadmask.jpg", road_panorama)
+            print("create road mask panorama cost time:", self.cost_time())  # 花费时间
 
         ################################
         ################################
         '''生成crack'''
         if self.cracks:
-            crack_img = self.crack.resize(Images.Resolution.FINAL)
-            crack_img, crack_masks, crack_corners, crack_sizes = self.warp_final_resolution(crack_img, cameras)
+            crack_img = self.cracks.resize(Images.Resolution.FINAL)
+            crack_img, crack_masks, crack_corners, crack_sizes, prej_points = self.warp_final_resolution(crack_img, cameras)
             self.initialize_composition(corners, sizes)
             self.blend_images(crack_img, seam_masks, corners)
             crack_panorama = self.create_final_panorama()
@@ -291,9 +330,9 @@ class Stitcher:
         print("create_final_panorama cost time:", self.cost_time())  # 花费时间 80秒
         panorama_with_seam_lines = SeamFinder.draw_seam_lines(panorama, blend_seam_masks, 3)
         print("draw_seam_lines cost time:", self.cost_time())  # 花费时间
-        with_seam_polygons = SeamFinder.draw_seam_polygons(panorama, blend_seam_masks)
-        print("draw_seam_polygons cost time:", self.cost_time())  # 花费时间
-        return panorama, panorama_with_seam_lines, with_seam_polygons
+        # with_seam_polygons = SeamFinder.draw_seam_polygons(panorama, blend_seam_masks)
+        # print("draw_seam_polygons cost time:", self.cost_time())  # 花费时间
+        return panorama, panorama_with_seam_lines
         pass
 
     def produce_stitch_cameras_data(self, images, feature_masks=[] , road_masks_img = [], crack_imgs = []):
@@ -308,7 +347,7 @@ class Stitcher:
         origin = Images.of(road_masks_img, self.medium_megapix, self.low_megapix, self.final_megapix)
         self.origin = origin
         imgs = self.resize_medium_resolution()  # 中等分辨率 放缩到中等分辨率, 原来的图片还在
-        road_masks_img = self.origin.resize(Images.Resolution.MEDIUM)
+        self.origin.resize(Images.Resolution.MEDIUM)
         # road_masks_img = self.resize_medium_resolution(origin)
 
         if self.crack:
@@ -318,8 +357,7 @@ class Stitcher:
         # 这里的matches 是一个二维矩阵，记录两两对应的特征匹配情况
         matches = self.match_features(features)  # 至此 特征提取，描述计算，单相应矩阵和内外点，以及优秀匹配特征点计算已完毕。
         # 在这步就将matches恢复成二维矩阵？
-        imgs, features, matches, road_masks_img = self.subset(imgs, features, matches,
-                                                              road_masks_img)  # 在这里已经得到了去除无关图片之后的缩略图片、特征、匹配特征矩阵，
+        imgs, features, matches = self.subset(imgs, features, matches)  # 在这里已经得到了去除无关图片之后的缩略图片、特征、匹配特征矩阵，
         cameras = self.estimate_camera_parameters(features, matches)  # 这里是得到了每张照片全局的相机变化参数R，是基于变换矩阵H得到的
         print("base cost time:", self.cost_time())
         cameras = self.refine_camera_parameters(features, matches, cameras)  # 这里得到的cameras是每个图片的变换参数R，T，K，这里进行了相机参数的优化
@@ -384,10 +422,10 @@ class Stitcher:
         return self.matcher.match_features(features)
 
     # 将拼接时用不到的图片，特征，匹配点都去除
-    def subset(self, imgs, features, matches, road_masks):
+    def subset(self, imgs, features, matches):
         indices = self.subsetter.subset(self.images.names, features, matches)
         imgs = Subsetter.subset_list(imgs, indices) # 根据索引提取图片，去除不链接的图片之后的图片集合
-        road_masks = Subsetter.subset_list(road_masks, indices)
+        # road_masks = Subsetter.subset_list(road_masks, indices)
         features = Subsetter.subset_list(features, indices)
 
         matches = Subsetter.subset_matches(matches, indices)
@@ -398,7 +436,7 @@ class Stitcher:
             self.origin.subset(indices)
         if self.crack:
             self.crack.subset(indices)
-        return imgs, features, matches, road_masks
+        return imgs, features, matches
 
     def estimate_camera_parameters(self, features, matches):
         return self.camera_estimator.estimate(features, matches)
@@ -420,7 +458,7 @@ class Stitcher:
         camera_aspect = self.images.get_ratio(
             Images.Resolution.MEDIUM, Images.Resolution.LOW
         )
-        imgs, masks, corners, sizes = self.warp(imgs, cameras, sizes, camera_aspect)
+        imgs, masks, corners, sizes, prej_points = self.warp(imgs, cameras, sizes, camera_aspect)
         return list(imgs), list(masks), corners, sizes
 
     def warp_medium_resolution(self, imgs, cameras):
@@ -428,7 +466,7 @@ class Stitcher:
         camera_aspect = self.images.get_ratio(
             Images.Resolution.MEDIUM, Images.Resolution.MEDIUM
         )
-        imgs, masks, corners, sizes = self.warp(imgs, cameras, sizes, camera_aspect)
+        imgs, masks, corners, sizes, prej_points = self.warp(imgs, cameras, sizes, camera_aspect)
         return list(imgs), list(masks), corners, sizes
 
     def warp_final_resolution(self, imgs, cameras):
@@ -439,10 +477,12 @@ class Stitcher:
         return self.warp(imgs, cameras, sizes, camera_aspect)
 
     def warp(self, imgs, cameras, sizes, aspect=1):
+        points = [[round(img.shape[1]/2), round(img.shape[0]/2)] for img in imgs]
         imgs = self.warper.warp_images(imgs, cameras, aspect)
         masks = self.warper.create_and_warp_masks(sizes, cameras, aspect)
         corners, sizes = self.warper.warp_rois(sizes, cameras, aspect)
-        return imgs, masks, corners, sizes
+        prej_points = self.warper.warp_points(points, cameras, aspect)
+        return imgs, masks, corners, sizes, prej_points
 
     def prepare_cropper(self, imgs, masks, corners, sizes):
         self.cropper.prepare(imgs, masks, corners, sizes)
